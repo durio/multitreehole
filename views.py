@@ -40,12 +40,18 @@ def main(request):
 
 @service_refused
 def create(request):
-    backends = []
-    for backend in get_backends():
-        backends.append((backend.slug, backend.label))
-    return render_to_response('multitreehole/create.html', {
-        'backends': backends,
-    }, context_instance=RequestContext(request))
+    if Service.objects.filter(backend__isnull=True).exists():
+        backends = []
+        for backend in get_backends():
+            backends.append((backend.slug, backend.label))
+        return render_to_response('multitreehole/create.html', {
+            'backends': backends,
+        }, context_instance=RequestContext(request))
+    else:
+        # Create meta site
+        service = Service.new_from_request(request)
+        service.save()
+        return HttpResponseRedirect(reverse(wait))
 
 class CreateServiceView(View, TemplateResponseMixin):
     template_name = 'multitreehole/create_service.html'
