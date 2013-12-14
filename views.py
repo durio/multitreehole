@@ -66,12 +66,12 @@ class CreateServiceView(View, TemplateResponseMixin):
         return self.render_to_response({
             'backend': self.backend,
             'form': self.form_class(),
-            'backend_form': self.backend_form_class(),
+            'backend_form': self.backend_form_class(prefix='backend'),
         })
 
     def post(self, request):
         form = self.form_class(request.POST, request.FILES)
-        backend_form = self.backend_form_class(request.POST, request.FILES)
+        backend_form = self.backend_form_class(request.POST, request.FILES, prefix='backend')
         if form.is_valid() and backend_form.is_valid():
             backend = Backend()
             backend.path = self.backend.__class__.__module__ + '.' + self.backend.__class__.__name__

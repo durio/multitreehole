@@ -12,10 +12,22 @@ import json
 import mechanize
 import re
 
+class RenrenBackendForm(forms.Form):
+    username = forms.CharField()
+    password = forms.CharField()
+    base_url = forms.CharField(initial='http://3g.renren.com')
+
+    def to_json(self):
+        return json.dumps({
+            'username': self.cleaned_data['username'],
+            'password': self.cleaned_data['password'],
+            'base-url': self.cleaned_data['base_url'],
+        })
+
 class RenrenBackend(object):
     slug = 'renren'
     label = _('Renren')
-    form_class = BasicBackendForm
+    form_class = RenrenBackendForm
 
     def make_client(self, pk, params):
         params = json.loads(params)
@@ -97,7 +109,7 @@ class RenrenMessage(object):
             form._errors['captcha'] = ErrorList([_('Renren login error. Incorrect captcha?')])
 
         def make_form():
-            form = RenrenLoginCaptchaForm(POST, FILES)
+            form = RenrenLoginCaptchaForm(POST, FILES, prefix='backend')
             form.fields['captcha_key'].widget.client = self.client
             return form
 

@@ -11,7 +11,20 @@ def validate_json(value):
 
 class ServiceForm(forms.Form):
     label = forms.CharField(max_length=255)
-    params = forms.CharField(widget=forms.Textarea, validators=[validate_json])
+    params = forms.CharField(
+        widget=forms.Textarea,
+        validators=[validate_json],
+        initial=json.dumps({
+            'access': [
+                {
+                    'network': '0.0.0.0/0',
+                },
+                {
+                    'network': '::/0',
+                },
+            ],
+        }),
+    )
 
 class PublishForm(forms.Form):
     text = forms.CharField(widget=forms.Textarea)
