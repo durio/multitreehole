@@ -32,11 +32,14 @@ class RenrenClient(object):
         self.base_url = base_url
         self.url = None
 
+    def get_cache_key(self):
+        return ':'.join([self.URL_CACHE_KEY, str(self.pk)])
+
     def load_cache(self):
-        self.url = cache.get(self.URL_CACHE_KEY)
+        self.url = cache.get(self.get_cache_key())
 
     def save_cache(self):
-        cache.set(self.URL_CACHE_KEY, self.url,
+        cache.set(self.get_cache_key(), self.url,
             getattr(settings, 'MULTITREEHOLE_BACKEND_RENREN_LOGIN_CACHE_TIMEOUT'),
         )
 
