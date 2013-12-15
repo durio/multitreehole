@@ -5,6 +5,7 @@ from django.core.urlresolvers import reverse
 from django.http import Http404, HttpResponseRedirect
 from django.shortcuts import render_to_response
 from django.template import RequestContext
+from django.utils.decorators import method_decorator
 from django.views.generic import ListView
 from django.views.generic.base import View, TemplateResponseMixin
 
@@ -28,6 +29,17 @@ def service_refused(view):
         except ObjectDoesNotExist:
             return view(request, *args, **kwargs)
         return HttpResponseRedirect(reverse(main))
+    return func
+
+def owner_expected(view):
+    @service_required
+    @login_required
+    def func(request, *args, **kwargs):
+        # Must be request.user.pk
+        if request.user.pk in request.service.owners or request.user.is_superuser:
+            return view(request, *args, **kwargs)
+        return render_to_response('multitreehole/not_owner.html', {
+        }, context_instance=RequestContext(request))
     return func
 
 @service_required
@@ -183,3 +195,29 @@ def go(request):
     if 'service' in request.GET:
         return go_service(request, request.GET['service'])
     raise Http404
+
+class ConfigView(View, TemplateResponseMixin):
+    template_name = 'multitreehole/config.html'
+    form_class = ServiceForm
+
+    @method_decorator(owner_expected)
+    def get(self, request):
+        form = self.form_class(initial={
+            'label': request.service.label,
+            'params': request.service.params,
+        })
+        return self.render_to_response({
+            'form': form,
+        })
+
+    @method_decorator(owner_expected)
+    def post(self, request):
+        form = self.form_class(request.POST, request.FILES)
+        if form.is_valid():
+            request.service.label = form.cleaned_data['label']
+            request.service.params = form.cleaned_data['params']
+            request.service.save()
+            return HttpResponseRedirect('?saved=true')
+        return self.render_to_response({
+            'form': form,
+        })
