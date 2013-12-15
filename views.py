@@ -32,14 +32,19 @@ def service_refused(view):
     return func
 
 def owner_expected(view):
-    @service_required
-    @login_required
     def func(request, *args, **kwargs):
         # Must be request.user.pk
         if request.user.pk in request.service.owners or request.user.is_superuser:
             return view(request, *args, **kwargs)
         return render_to_response('multitreehole/not_owner.html', {
         }, context_instance=RequestContext(request))
+    return func
+
+def normal_service_expected(view):
+    def func(request, *args, **kwargs):
+        if request.service.backend:
+            return view(request, *args, **kwargs)
+        raise Http404
     return func
 
 def get_backend_tuples():
@@ -203,6 +208,8 @@ class ConfigView(View, TemplateResponseMixin):
     template_name = 'multitreehole/config.html'
     form_class = ServiceForm
 
+    @method_decorator(service_required)
+    @method_decorator(login_required)
     @method_decorator(owner_expected)
     def get(self, request):
         form = self.form_class(initial={
@@ -213,6 +220,8 @@ class ConfigView(View, TemplateResponseMixin):
             'form': form,
         })
 
+    @method_decorator(service_required)
+    @method_decorator(login_required)
     @method_decorator(owner_expected)
     def post(self, request):
         form = self.form_class(request.POST, request.FILES)
@@ -226,7 +235,10 @@ class ConfigView(View, TemplateResponseMixin):
         })
 
     def render_to_response_with_backends(self, context):
-        backend = load_backend(self.request.service.backend.path)
+        if self.request.service.backend:
+            backend = load_backend(self.request.service.backend.path)
+        else:
+            backend = None
         context['backend'] = backend
         context['backends'] = get_backend_tuples()
         return self.render_to_response(context)
@@ -237,7 +249,9 @@ class ConfigBackendView(View, TemplateResponseMixin):
     def dispatch(self, request, backend, *args, **kwargs):
         self.backend = get_backend_or_404(backend)
         self.form_class = self.backend.form_class
-        return owner_expected(super(ConfigBackendView, self).dispatch)(request)
+        return service_required(normal_service_expected(login_required(owner_expected(
+            super(ConfigBackendView, self).dispatch
+        ))))(request)
 
     def get(self, request):
         return self.render_to_response({
