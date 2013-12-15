@@ -6,8 +6,6 @@ from django.utils.encoding import smart_bytes
 from django.utils.html import format_html
 from django.utils.translation import ugettext_lazy as _
 
-from multitreehole.backends import BasicBackendForm
-
 import json
 import logging
 import mechanize
