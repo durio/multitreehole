@@ -12,7 +12,7 @@ class Backend(models.Model):
     params = models.TextField()
 
 class Service(models.Model):
-    SLUG_RE = re.compile(r'[a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9]')
+    SLUG_RE = re.compile(r'^([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])$')
     slug = models.SlugField(unique=True, db_index=True)
     label = models.CharField(max_length=255)
     backend = models.ForeignKey(Backend, null=True)
