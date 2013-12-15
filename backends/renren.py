@@ -68,8 +68,9 @@ class RenrenClient(object):
         return browser
 
     def get_url(self, force=False, captcha_key=None, captcha=None):
-        self.load_cache()
-        if (self.url is None or force) and captcha_key and captcha:
+        if not self.url:
+            self.load_cache()
+        if (not self.url or force) and captcha_key and captcha:
             try:
                 browser = self.make_browser()
                 browser.open(self.base_url)
