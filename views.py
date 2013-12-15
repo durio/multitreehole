@@ -9,6 +9,7 @@ from django.utils.decorators import method_decorator
 from django.views.generic import ListView
 from django.views.generic.base import View, TemplateResponseMixin
 
+from multitreehole.filters import MessageFilter, MetaMessageFilter
 from multitreehole.forms import ServiceForm, PublishForm
 from multitreehole.models import Backend, Service, Message
 from multitreehole.utils import load_backend, get_backends, get_backend_or_404
@@ -273,3 +274,19 @@ class ConfigBackendView(View, TemplateResponseMixin):
             'backend': self.backend,
             'form': form,
         })
+
+@service_required
+@login_required
+@owner_expected
+def message_list(request):
+    queryset = Message.objects.all()
+    if request.service.backend:
+        f = MessageFilter(request.GET, queryset=queryset.filter(service=request.service))
+        is_meta = False
+    else:
+        f = MetaMessageFilter(request.GET, queryset=queryset)
+        is_meta = True
+    return render_to_response('multitreehole/message_list.html', {
+        'filter': f,
+        'is_meta': is_meta,
+    }, context_instance=RequestContext(request))
