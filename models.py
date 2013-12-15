@@ -105,6 +105,9 @@ class Service(models.Model):
             return str(subnet.network)
         return None
 
+    def __unicode__(self):
+        return self.label
+
 class Message(models.Model):
     service = models.ForeignKey(Service, db_index=True)
     timestamp = models.DateTimeField(auto_now_add=True, db_index=True)
