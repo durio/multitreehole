@@ -63,11 +63,11 @@ class Service(models.Model):
                 else:
                     if 'reject' in access:
                         reject_re = re.compile(access['reject'])
-                        if reject_re.match(text):
+                        if reject_re.search(text):
                             return 'reject', user_identifier
                     if 'moderate' in access:
                         moderate_re = re.compile(access['moderate'])
-                        if moderate_re.match(text):
+                        if moderate_re.search(text):
                             return 'moderate', user_identifier
                     # access_level should be 'accept' here.
                     return access_level, user_identifier
