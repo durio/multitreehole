@@ -211,6 +211,9 @@ class ConfigView(View, TemplateResponseMixin):
     @method_decorator(service_required)
     @method_decorator(login_required)
     @method_decorator(owner_expected)
+    def dispatch(self, request, *args, **kwargs):
+        return super(ConfigView, self).dispatch(request, *args, **kwargs)
+
     def get(self, request):
         form = self.form_class(initial={
             'label': request.service.label,
@@ -220,9 +223,6 @@ class ConfigView(View, TemplateResponseMixin):
             'form': form,
         })
 
-    @method_decorator(service_required)
-    @method_decorator(login_required)
-    @method_decorator(owner_expected)
     def post(self, request):
         form = self.form_class(request.POST, request.FILES)
         if form.is_valid():
