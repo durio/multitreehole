@@ -9,8 +9,10 @@ from django.utils.translation import ugettext_lazy as _
 from multitreehole.backends import BasicBackendForm
 
 import json
+import logging
 import mechanize
 import re
+import traceback
 
 class RenrenBackendForm(forms.Form):
     username = forms.CharField()
@@ -49,11 +51,16 @@ class RenrenClient(object):
 
     def load_cache(self):
         self.url = cache.get(self.get_cache_key())
+        if self.url:
+            logging.info('Got cached Renren URL: ' + self.url)
+        else:
+            logging.info('No cached Renren URL.')
 
     def save_cache(self):
         cache.set(self.get_cache_key(), self.url,
             getattr(settings, 'MULTITREEHOLE_BACKEND_RENREN_LOGIN_CACHE_TIMEOUT'),
         )
+        logging.info('Renren URL cached: ' + self.url)
 
     def make_browser(self):
         browser = mechanize.Browser()
@@ -75,8 +82,10 @@ class RenrenClient(object):
                 browser.submit()
                 url = browser.find_link(url_regex=re.compile(r'.*/profile\.do\?')).url
             except Exception:
+                logging.warning('Renren URL fetching error: ' + traceback.format_exc())
                 return None
             else:
+                logging.info('Renren URL fetched: ' + url)
                 self.url = url
                 self.save_cache()
         return self.url
@@ -91,6 +100,7 @@ class RenrenClient(object):
             url = self.base_url + '/rndimg_wap?post=_REQUESTFRIEND_%s&rnd=%f' % (key, random.random())
             return key, url
         except Exception:
+            logging.warning('Renren captcha fetching error: ' + traceback.format_exc())
             return None, None
 
     def make_message(self, text):
@@ -133,11 +143,12 @@ class RenrenMessage(object):
             browser['status'] = smart_bytes(self.text)
             browser.submit()
             if '%E7%8A%B6%E6%80%81%E5%8F%91%E5%B8%83%E6%88%90%E5%8A%9F' not in browser.geturl():
-                raise Exception
+                raise Exception('Unexpected return URL after submission: ' + browser.geturl())
 
         try:
             try_submit(url)
         except Exception:
+            logging.warning('Renren initial submission error: ' + traceback.format_exc())
             # XXX: sometimes this is just a publishing error. Not a login error.
             if not form:
                 form = make_form()
@@ -153,6 +164,7 @@ class RenrenMessage(object):
             try:
                 try_submit(url)
             except Exception:
+                logging.warning('Renren final submission error: ' + traceback.format_exc())
                 return {'error': ErrorList([_('Renren publishing error. Message rejected there?')])}
 
         return {'data': ''}
