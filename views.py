@@ -42,6 +42,12 @@ def owner_expected(view):
         }, context_instance=RequestContext(request))
     return func
 
+def get_backend_tuples():
+    backends = []
+    for backend in get_backends():
+        backends.append((backend.slug, backend.label))
+    return backends
+
 @service_required
 def main(request):
     if request.service.backend:
@@ -53,11 +59,8 @@ def main(request):
 @service_refused
 def create(request):
     if Service.objects.filter(backend__isnull=True).exists():
-        backends = []
-        for backend in get_backends():
-            backends.append((backend.slug, backend.label))
         return render_to_response('multitreehole/create.html', {
-            'backends': backends,
+            'backends': get_backend_tuples(),
         }, context_instance=RequestContext(request))
     else:
         # Create meta site
@@ -206,7 +209,7 @@ class ConfigView(View, TemplateResponseMixin):
             'label': request.service.label,
             'params': request.service.params,
         })
-        return self.render_to_response({
+        return self.render_to_response_with_backends({
             'form': form,
         })
 
@@ -218,6 +221,41 @@ class ConfigView(View, TemplateResponseMixin):
             request.service.params = form.cleaned_data['params']
             request.service.save()
             return HttpResponseRedirect('?saved=true')
+        return self.render_to_response_with_backends({
+            'form': form,
+        })
+
+    def render_to_response_with_backends(self, context):
+        backend = load_backend(self.request.service.backend.path)
+        context['backend'] = backend
+        context['backends'] = get_backend_tuples()
+        return self.render_to_response(context)
+
+class ConfigBackendView(View, TemplateResponseMixin):
+    template_name = 'multitreehole/config_backend.html'
+
+    def dispatch(self, request, backend, *args, **kwargs):
+        self.backend = get_backend_or_404(backend)
+        self.form_class = self.backend.form_class
+        return owner_expected(super(ConfigBackendView, self).dispatch)(request)
+
+    def get(self, request):
         return self.render_to_response({
+            'backend': self.backend,
+            'form': self.form_class(),
+        })
+
+    def post(self, request):
+        form = self.form_class(request.POST, request.FILES)
+        if form.is_valid():
+            backend = Backend()
+            backend.path = self.backend.__class__.__module__ + '.' + self.backend.__class__.__name__
+            backend.params = form.to_json()
+            backend.save()
+            request.service.backend = backend
+            request.service.save()
+            return HttpResponseRedirect(reverse('multitreehole.views.config'))
+        return self.render_to_response({
+            'backend': self.backend,
             'form': form,
         })
