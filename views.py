@@ -153,7 +153,7 @@ class PublishView(View, TemplateResponseMixin):
                 return message
             if access_level == 'moderate':
                 message = prepare_message()
-                message.published = False
+                message.closed = False
                 message.save()
                 return render_to_response('multitreehole/publish-moderate.html', {
                     'user_identifier': user_identifier,
@@ -171,7 +171,7 @@ class PublishView(View, TemplateResponseMixin):
                     form._errors['text'] = status['error']
                 if 'data' in status:
                     message = prepare_message()
-                    message.published = True
+                    message.closed = True
                     message.backend = request.service.backend
                     message.backend_data = status['data']
                     message.save()

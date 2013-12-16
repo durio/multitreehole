@@ -113,6 +113,6 @@ class Message(models.Model):
     timestamp = models.DateTimeField(auto_now_add=True, db_index=True)
     user_identifier = models.CharField(max_length=255, db_index=True)
     text = models.TextField()
-    published = models.BooleanField(db_index=True)
+    closed = models.BooleanField(db_index=True)
     backend = models.ForeignKey(Backend, null=True)
     backend_data = models.TextField()
