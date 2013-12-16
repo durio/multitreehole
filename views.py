@@ -1,5 +1,5 @@
 from django.conf import settings
-from django.contrib.auth.decorators import login_required
+from django.contrib.auth.decorators import login_required as normal_login_required
 from django.core.exceptions import ObjectDoesNotExist
 from django.core.urlresolvers import reverse
 from django.http import Http404, HttpResponseRedirect
@@ -46,6 +46,18 @@ def normal_service_expected(view):
         if request.service.backend:
             return view(request, *args, **kwargs)
         raise Http404
+    return func
+
+def login_required(view):
+    def func(request, *args, **kwargs):
+        if request.service.backend:
+            meta = Service.objects.get(backend__isnull=True)
+            decorator = normal_login_required(
+                login_url='//' + meta.get_host(request) + settings.LOGIN_URL
+            )
+        else:
+            decorator = normal_login_required
+        return decorator(view)(request, *args, **kwargs)
     return func
 
 def get_backend_tuples():
@@ -197,7 +209,7 @@ class ListServicesView(ListView):
 
 def go_service(request, slug):
     if Service.SLUG_RE.search(slug):
-        return HttpResponseRedirect('//' + slug + Service.split_request_host(request)[1])
+        return HttpResponseRedirect('//' + Service.build_host(slug, request))
     raise Http404
 
 def go(request):

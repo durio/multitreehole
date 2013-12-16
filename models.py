@@ -39,6 +39,13 @@ class Service(models.Model):
     def new_from_request(cls, request):
         return cls(slug=cls.split_request_host(request)[0])
 
+    @classmethod
+    def build_host(cls, slug, request):
+        return slug + cls.split_request_host(request)[1]
+
+    def get_host(self, request):
+        return self.build_host(self.slug, request)
+
     def get_params(self):
         if not hasattr(self, 'params_data'):
             self.params_data = json.loads(self.params)
