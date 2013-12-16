@@ -2,10 +2,12 @@ from django.conf import settings
 from django.contrib.auth.decorators import login_required as normal_login_required
 from django.core.exceptions import ObjectDoesNotExist
 from django.core.urlresolvers import reverse
+from django.forms.util import ErrorList
 from django.http import Http404, HttpResponseRedirect
 from django.shortcuts import render_to_response
 from django.template import RequestContext
 from django.utils.decorators import method_decorator
+from django.utils.translation import ugettext_lazy as _
 from django.views.generic import ListView
 from django.views.generic.base import View, TemplateResponseMixin
 
@@ -138,7 +140,7 @@ class PublishView(View, TemplateResponseMixin):
     form_class = PublishForm
 
     def get(self, request):
-        access_level, user_identifier = request.service.check_access(request)
+        access_level, user_identifier, confirm = request.service.check_access(request)
         if access_level != 'accept':
             # multitreehole/publish-throttle.html
             # multitreehole/publish-reject.html
@@ -157,7 +159,7 @@ class PublishView(View, TemplateResponseMixin):
         backend_forms = []
         if form.is_valid():
             text = form.cleaned_data['text']
-            access_level, user_identifier = request.service.check_access(request, text)
+            access_level, user_identifier, confirm = request.service.check_access(request, text)
             def prepare_message():
                 message = Message()
                 message.set_service(request.service)
@@ -173,18 +175,24 @@ class PublishView(View, TemplateResponseMixin):
                     'message': message,
                 }, context_instance=RequestContext(request))
             elif access_level == 'accept':
-                client = request.backend.make_client(
-                    request.service.backend.pk, request.service.backend.params
-                )
-                backend_message = client.make_message(form.cleaned_data['text'])
-                status = backend_message.publish(request.POST, request.FILES)
+                message = prepare_message()
+                message.closed = True
+                message.save()
+                if confirm(message):
+                    client = request.backend.make_client(
+                        request.service.backend.pk, request.service.backend.params
+                    )
+                    backend_message = client.make_message(form.cleaned_data['text'])
+                    status = backend_message.publish(request.POST, request.FILES)
+                else:
+                    status = {'error': ErrorList([_(
+                        'Access confirmation failed. Are you requesting concurrently?'
+                    )])}
                 if 'forms' in status:
                     backend_forms = status['forms']
                 if 'error' in status:
                     form._errors['text'] = status['error']
                 if 'data' in status:
-                    message = prepare_message()
-                    message.closed = True
                     message.backend = request.service.backend
                     message.backend_data = status['data']
                     message.save()
@@ -192,8 +200,9 @@ class PublishView(View, TemplateResponseMixin):
                         'user_identifier': user_identifier,
                         'message': message,
                     }, context_instance=RequestContext(request))
+                message.delete()
         else:
-            access_level, user_identifier = request.service.check_access(request)
+            access_level, user_identifier, confirm = request.service.check_access(request)
         return self.render_to_response({
             'form': form,
             'backend_forms': backend_forms,

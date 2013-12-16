@@ -1,4 +1,5 @@
 from django.contrib.auth.models import User
+from django.core.exceptions import ObjectDoesNotExist, MultipleObjectsReturned
 from django.db import models
 from django.http import Http404
 
@@ -14,6 +15,7 @@ else:
 from djangotoolbox.fields import SetField
 
 import json
+import logging
 import re
 
 class Backend(models.Model):
@@ -64,7 +66,7 @@ class Service(models.Model):
 
     def check_access(self, request, text=None):
         '''
-        This method returns two values.
+        This method returns three values.
 
         The first is access level:
         * If text is set, returns 'accept', 'moderate', 'throttle' or 'reject'.
@@ -72,24 +74,27 @@ class Service(models.Model):
 
         The second is user identifier as a string.
         Usually this is user IP with last bits cleared.
+
+        The third is a "confirm" function. Call it after a message is placed
+        to confirm access (for throttling).
         '''
         for access in self.get_params().get('access', []):
-            access_level, user_identifier = self.match_access(access, request)
+            access_level, user_identifier, confirm = self.match_access(access, request)
             if access_level != 'reject':
                 if text is None or access_level == 'throttle':
-                    return access_level, user_identifier
+                    return access_level, user_identifier, confirm
                 else:
                     if 'reject' in access:
                         reject_re = re.compile(access['reject'])
                         if reject_re.search(text):
-                            return 'reject', user_identifier
+                            return 'reject', user_identifier, confirm
                     if 'moderate' in access:
                         moderate_re = re.compile(access['moderate'])
                         if moderate_re.search(text):
-                            return 'moderate', user_identifier
+                            return 'moderate', user_identifier, confirm
                     # access_level should be 'accept' here.
-                    return access_level, user_identifier
-        return 'reject', None
+                    return access_level, user_identifier, confirm
+        return 'reject', None, lambda obj: True
 
     def match_access(self, access, request):
         '''
@@ -98,18 +103,31 @@ class Service(models.Model):
         '''
         from datetime import datetime, timedelta
         user_identifier = self.extract_user_identifier(access, request)
+        confirm = lambda obj: True
         if user_identifier:
             throttle = access.get('throttle')
             if throttle:
                 delta = timedelta(seconds=throttle)
                 threshold = datetime.now() - delta
-                if Message.filter_service(self).filter(
-                    user_identifier=user_identifier,
-                    timestamp__gt=threshold,
-                ).exists():
-                    return 'throttle', user_identifier
-            return 'accept', user_identifier
-        return 'reject', user_identifier
+                def confirm(obj=None):
+                    try:
+                        existing = Message.filter_service(self).get(
+                            user_identifier=user_identifier,
+                            timestamp__gt=threshold,
+                        )
+                    except ObjectDoesNotExist:
+                        # Shouldn't happen
+                        if obj:
+                            raise Exception('Expected message object is missing when confirming throttling')
+                    except MultipleObjectsReturned:
+                        return False
+                    if obj and existing != obj:
+                        raise Exception('Expected message object is not returned when confirming throttling')
+                    return True
+                if not confirm():
+                    return 'throttle', user_identifier, confirm
+            return 'accept', user_identifier, confirm
+        return 'reject', user_identifier, confirm
 
     def extract_user_identifier(self, access, request):
         import ipaddr
