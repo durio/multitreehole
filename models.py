@@ -2,6 +2,15 @@ from django.contrib.auth.models import User
 from django.db import models
 from django.http import Http404
 
+try:
+    from djangoappengine.fields import DbKeyField
+    from djangoappengine.db.utils import AncestorKey
+    from google.appengine.api.datastore import Key
+except ImportError:
+    use_ancestor = False
+else:
+    use_ancestor = True
+
 from djangotoolbox.fields import SetField
 
 import json
@@ -18,6 +27,8 @@ class Service(models.Model):
     backend = models.ForeignKey(Backend, null=True)
     params = models.TextField()
     owners = SetField(models.ForeignKey(User))
+    if use_ancestor:
+        key = DbKeyField(primary_key=True)
 
     @classmethod
     def split_request_host(cls, request):
@@ -92,7 +103,7 @@ class Service(models.Model):
             if throttle:
                 delta = timedelta(seconds=throttle)
                 threshold = datetime.now() - delta
-                if Message.objects.filter(service=self,
+                if Message.filter_service(self).filter(
                     user_identifier=user_identifier,
                     timestamp__gt=threshold,
                 ).exists():
@@ -123,3 +134,42 @@ class Message(models.Model):
     closed = models.BooleanField(db_index=True)
     backend = models.ForeignKey(Backend, null=True)
     backend_data = models.TextField()
+    if use_ancestor:
+        key = DbKeyField(primary_key=True, parent_key_name='parent_key')
+
+    def set_service(self, service):
+        '''
+        Always use this to update service.
+        '''
+        if use_ancestor:
+            self.parent_key = service.key
+        self.service = service
+
+    @classmethod
+    def filter_service(cls, service):
+        '''
+        It's okay to filter on service directly as long as
+        strong consistency is not required.
+        '''
+        if use_ancestor:
+            return cls.objects.filter(key=AncestorKey(service.key))
+        return cls.objects.filter(service=service)
+
+    @classmethod
+    def from_service_id(cls, service, id):
+        '''
+        Use this with data returned from get_id().
+        '''
+        if use_ancestor:
+            return cls.objects.get(key=Key.from_path(
+                self._meta.db_table, long(id), parent=service.key
+            ))
+        return cls.objects.get(service=service, pk=id)
+
+    def get_id(self):
+        '''
+        A pretty ID, but it must be used together with service to do lookup later.
+        '''
+        if use_ancestor:
+            return self.key.id()
+        return self.pk
