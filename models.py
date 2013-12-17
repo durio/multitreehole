@@ -116,14 +116,21 @@ class Service(models.Model):
                             timestamp__gt=threshold,
                         )
                     except ObjectDoesNotExist:
-                        # Shouldn't happen
                         if obj:
+                            # Shouldn't happen
                             raise Exception('Expected message object is missing when confirming throttling')
+                        else:
+                            return True
                     except MultipleObjectsReturned:
                         return False
-                    if obj and existing != obj:
-                        raise Exception('Expected message object is not returned when confirming throttling')
-                    return True
+                    # existing is returned
+                    if obj:
+                        if existing != obj:
+                            raise Exception('Expected message object is not returned when confirming throttling')
+                        else:
+                            return True
+                    else:
+                        return False
                 if not confirm():
                     return 'throttle', user_identifier, confirm
             return 'accept', user_identifier, confirm
