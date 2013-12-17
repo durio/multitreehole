@@ -40,8 +40,7 @@ def service_refused(view):
 
 def owner_expected(view):
     def func(request, *args, **kwargs):
-        # Must be request.user.pk
-        if request.user.pk in request.service.owners or request.user.is_superuser:
+        if request.service.is_owner(request.user):
             return view(request, *args, **kwargs)
         return render_to_response('multitreehole/not_owner.html', {
         }, context_instance=RequestContext(request))
@@ -472,3 +471,16 @@ class MessageListView(View, TemplateResponseMixin):
             'action_messages': messages,
             'approve_forms': approve_forms,
         })
+
+@service_required
+@normal_service_expected
+def message_details(request, message_id):
+    try:
+        message = Message.from_service_id(request.service, message_id)
+    except (ObjectDoesNotExist, TypeError, ValueError):
+        raise Http404
+    is_owner = request.service.is_owner(request.user)
+    return render_to_response('multitreehole/message_details.html', {
+        'message': message,
+        'is_owner': is_owner,
+    }, context_instance=RequestContext(request))

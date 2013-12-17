@@ -141,6 +141,10 @@ class Service(models.Model):
             return str(subnet.network)
         return None
 
+    def is_owner(self, user):
+        # Must be request.user.pk
+        return user.pk in self.owners or user.is_superuser
+
     def __unicode__(self):
         return self.label
 
