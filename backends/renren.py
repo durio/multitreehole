@@ -110,7 +110,7 @@ class RenrenMessage(object):
         self.client = client
         self.text = text
 
-    def publish(self, POST, FILES):
+    def publish(self, POST, FILES, form_prefix='backend'):
         url = self.client.get_url()
         form = None
 
@@ -118,7 +118,7 @@ class RenrenMessage(object):
             form._errors['captcha'] = ErrorList([_('Renren login error. Incorrect captcha?')])
 
         def make_form():
-            form = RenrenLoginCaptchaForm(POST, FILES, prefix='backend')
+            form = RenrenLoginCaptchaForm(POST, FILES, form_prefix)
             form.fields['captcha_key'].widget.client = self.client
             return form
 

@@ -34,7 +34,7 @@ class LocalFileMessage(object):
         self.client = client
         self.text = text
 
-    def publish(self, POST, FILES):
+    def publish(self, POST, FILES, form_prefix='backend'):
         file_obj = file.__new__(file, self.client.file_name, 'a')
         try:
             from google.appengine.tools.dev_appserver import FakeFile

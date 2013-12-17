@@ -149,7 +149,12 @@ class Message(models.Model):
     timestamp = models.DateTimeField(auto_now_add=True, db_index=True)
     user_identifier = models.CharField(max_length=255, db_index=True)
     text = models.TextField()
+    # "closed" means this message can't be touched anymore.
+    # A "closed" message with no "approved" and "backend" set is an error.
     closed = models.BooleanField(db_index=True)
+    # "approved" means whether this message is approved or not in manual review.
+    # A "closed", "approved" message without backend set is an error.
+    approved = models.NullBooleanField(db_index=True)
     backend = models.ForeignKey(Backend, null=True)
     backend_data = models.TextField()
     if use_ancestor:
@@ -180,7 +185,7 @@ class Message(models.Model):
         '''
         if use_ancestor:
             return cls.objects.get(key=Key.from_path(
-                self._meta.db_table, long(id), parent=service.key
+                cls._meta.db_table, long(id), parent=service.key
             ))
         return cls.objects.get(service=service, pk=id)
 

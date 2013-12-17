@@ -16,6 +16,9 @@ from multitreehole.forms import ServiceForm, PublishForm
 from multitreehole.models import Backend, Service, Message
 from multitreehole.utils import load_backend, get_backends, get_backend_or_404
 
+import logging
+import traceback
+
 def service_required(view):
     def func(request, *args, **kwargs):
         try:
@@ -52,7 +55,7 @@ def normal_service_expected(view):
 
 def login_required(view):
     def func(request, *args, **kwargs):
-        if request.service.backend:
+        if not hasattr(request, 'service') or request.service.backend:
             meta = Service.objects.get(backend__isnull=True)
             decorator = normal_login_required(
                 login_url='//' + meta.get_host(request) + settings.LOGIN_URL
@@ -297,18 +300,154 @@ class ConfigBackendView(View, TemplateResponseMixin):
             'form': form,
         })
 
-@service_required
-@login_required
-@owner_expected
-def message_list(request):
-    if request.service.backend:
-        queryset = Message.filter_service(request.service)
-        is_meta = False
-    else:
-        queryset = Message.objects.all()
-        is_meta = True
-    f = MessageFilter(request.GET, queryset=queryset)
-    return render_to_response('multitreehole/message_list.html', {
-        'filter': f,
-        'is_meta': is_meta,
-    }, context_instance=RequestContext(request))
+class MessageListView(View, TemplateResponseMixin):
+    template_name = 'multitreehole/message_list.html'
+
+    @method_decorator(service_required)
+    @method_decorator(login_required)
+    @method_decorator(owner_expected)
+    def dispatch(self, request, *args, **kwargs):
+        return super(MessageListView, self).dispatch(request, *args, **kwargs)
+
+    def get(self, request):
+        if request.service.backend:
+            queryset = Message.filter_service(request.service)
+            is_meta = False
+        else:
+            queryset = Message.objects.all()
+            is_meta = True
+        f = MessageFilter(request.GET, queryset=queryset)
+        return self.render_to_response({
+            'filter': f,
+            'is_meta': is_meta,
+        })
+
+    def post(self, request):
+        if not request.service.backend:
+            return self.get(request)
+        message_ids_to_approve_str = request.POST.getlist('message_approve')
+        message_ids_to_reject_str = request.POST.getlist('message_reject')
+        if 'batch_approve' in request.POST and 'batch_reject' in request.POST:
+            pass
+        elif 'batch_approve' in request.POST:
+            message_ids_to_approve += request.POST.getlist('message')
+        elif 'batch_reject' in request.POST:
+            message_ids_to_approve += request.POST.getlist('message')
+
+        def clean_str_list(str_list):
+            long_set = set()
+            for item in str_list:
+                try:
+                    long_set.add(long(item))
+                except ValueError:
+                    pass
+            return long_set
+        message_ids_to_approve = clean_str_list(message_ids_to_approve_str)
+        message_ids_to_reject = clean_str_list(message_ids_to_reject_str)
+
+        message_ids_approved = set()
+        message_ids_rejected = set()
+        message_ids_not_approved = set()
+        message_ids_not_rejected = set()
+        message_objects = {}
+
+        def toggle_message(message_id, closed, approved):
+            try:
+                message = Message.from_service_id(request.service, message_id)
+            except ObjectDoesNotExist:
+                message_objects[message_id] = None
+                return
+            message_objects[message_id] = message
+            if message.closed == closed:
+                return
+            message.closed = closed
+            message.approved = approved
+            message.save()
+            return message
+
+        try:
+            from google.appengine.ext import db
+            from multitreehole.models import use_ancestor
+        except ImportError:
+            use_transaction = False
+        else:
+            use_transaction = use_ancestor
+
+        if use_transaction:
+            run_in_transaction = db.run_in_transaction
+        else:
+            run_in_transaction = lambda func, *args, **kwargs: func(*args, **kwargs)
+
+        client = None
+        approve_forms = {}
+        approve_errors = {}
+        for message_id in message_ids_to_approve:
+            try:
+                message = run_in_transaction(toggle_message, message_id, True, True)
+            except Exception:
+                logging.warning('Transaction for approval failure: ' + traceback.format_exc())
+                message_ids_not_approved.add(message_id)
+                continue
+            if not message:
+                message_ids_not_approved.add(message_id)
+                continue
+            if not client:
+                client = load_backend(request.service.backend.path).make_client(
+                    request.service.backend.pk, request.service.backend.params
+                )
+            backend_message = client.make_message(message.text)
+            status = backend_message.publish(request.POST, request.FILES,
+                form_prefix='message-%d' % message_id
+            )
+            if 'forms' in status:
+                approve_forms[message_id] = status['forms']
+                toggle_message(message_id, False, None)
+            if 'error' in status:
+                approve_errors[message_id] = status['error']
+                toggle_message(message_id, False, None)
+            if 'data' in status:
+                message.approved = True
+                message.backend = request.service.backend
+                message.backend_data = status['data']
+                message.save()
+                message_ids_approved.add(message_id)
+            else:
+                message_ids_not_approved.add(message_id)
+
+        for message_id in message_ids_to_reject:
+            try:
+                message = run_in_transaction(toggle_message, message_id, True, False)
+            except Exception:
+                logging.warning('Transaction for rejection failure: ' + traceback.format_exc())
+                message_ids_not_rejected.add(message_id)
+                continue
+            if message:
+                message_ids_rejected.add(message_id)
+            else:
+                message_ids_not_rejected.add(message_id)
+
+        # if not message_ids_not_approved and not message_ids_not_rejected \
+        #         and not approve_forms and not approve_errors:
+        #     return HttpResponseRedirect('?success=true')
+
+        messages = {}
+        def populate_set(suffix, local_vars):
+            for message_id in local_vars.get('message_ids_' + suffix):
+                messages.setdefault(message_id, {})[suffix] = True
+        populate_set('to_approve', locals())
+        populate_set('to_reject', locals())
+        populate_set('approved', locals())
+        populate_set('rejected', locals())
+        populate_set('not_approved', locals())
+        populate_set('not_rejected', locals())
+        def populate_dict(obj, key):
+            for message_id, sub_obj in obj.iteritems():
+                messages.setdefault(message_id, {})[key] = sub_obj
+        populate_dict(approve_forms, 'approve_forms')
+        populate_dict(approve_errors, 'approve_error')
+        populate_dict(message_objects, 'object')
+        self.template_name = 'multitreehole/message_action.html'
+        return self.render_to_response({
+            'action_messages': messages,
+            'approve_forms': approve_forms,
+        })
