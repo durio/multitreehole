@@ -327,11 +327,9 @@ class MessageListView(View, TemplateResponseMixin):
             return self.get(request)
         message_ids_to_approve_str = request.POST.getlist('message_approve')
         message_ids_to_reject_str = request.POST.getlist('message_reject')
-        if 'batch_approve' in request.POST and 'batch_reject' in request.POST:
-            pass
-        elif 'batch_approve' in request.POST:
+        if 'batch_approve' in request.POST:
             message_ids_to_approve += request.POST.getlist('message')
-        elif 'batch_reject' in request.POST:
+        if 'batch_reject' in request.POST:
             message_ids_to_approve += request.POST.getlist('message')
 
         def clean_str_list(str_list):
@@ -344,6 +342,9 @@ class MessageListView(View, TemplateResponseMixin):
             return long_set
         message_ids_to_approve = clean_str_list(message_ids_to_approve_str)
         message_ids_to_reject = clean_str_list(message_ids_to_reject_str)
+        message_ids_to_approve, message_ids_to_reject = \
+                message_ids_to_approve - message_ids_to_reject, \
+                message_ids_to_reject - message_ids_to_approve
 
         message_ids_approved = set()
         message_ids_rejected = set()
