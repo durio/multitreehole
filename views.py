@@ -1,6 +1,7 @@
 from django.conf import settings
 from django.contrib.auth.decorators import login_required as normal_login_required
 from django.core.exceptions import ObjectDoesNotExist
+from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
 from django.core.urlresolvers import reverse
 from django.forms.util import ErrorList
 from django.http import Http404, HttpResponseRedirect
@@ -317,8 +318,27 @@ class MessageListView(View, TemplateResponseMixin):
             queryset = Message.objects.all()
             is_meta = True
         f = MessageFilter(request.GET, queryset=queryset)
+        try:
+            page_size = int(request.GET.get('page_size'))
+        except (TypeError, ValueError):
+            page_size = getattr(settings, 'MULTITREEHOLE_MESSAGE_PAGE_SIZE', 25)
+        paginator = Paginator(f, page_size)
+        page = request.GET.get('page')
+        try:
+            messages = paginator.page(page)
+        except PageNotAnInteger:
+            messages = paginator.page(1)
+        except EmptyPage:
+            messages = paginator.page(paginator.num_pages)
+        query = request.GET
+        if 'page' in query:
+            query = query.copy()
+            del query['page']
         return self.render_to_response({
             'filter': f,
+            'message_list': messages,
+            'query_string_piece': '?' + query.urlencode() + '&' if query else '?',
+            'page_size': page_size,
             'is_meta': is_meta,
         })
 
