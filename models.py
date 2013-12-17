@@ -33,10 +33,14 @@ class Service(models.Model):
         key = DbKeyField(primary_key=True)
 
     @classmethod
+    def validate_slug(cls, slug):
+        return cls.SLUG_RE.search(slug)
+
+    @classmethod
     def split_request_host(cls, request):
         host = request.META['HTTP_HOST']
         pieces = host.split('.', 1)
-        if not cls.SLUG_RE.match(pieces[0]):
+        if not cls.validate_slug(pieces[0]):
             raise Http404
         if len(pieces) < 2:
             pieces.append('')

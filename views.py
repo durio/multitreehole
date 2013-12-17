@@ -221,7 +221,7 @@ class ListServicesView(ListView):
         return Service.objects.exclude(backend__isnull=True)
 
 def go_service(request, slug):
-    if Service.SLUG_RE.search(slug):
+    if Service.validate_slug(slug):
         return HttpResponseRedirect('//' + Service.build_host(slug, request))
     raise Http404
 
