@@ -398,7 +398,7 @@ class MessageListView(View, TemplateResponseMixin):
                 )
             backend_message = client.make_message(message.text)
             status = backend_message.publish(request.POST, request.FILES,
-                form_prefix='message-%d' % message_id
+                form_prefix='message_%d' % message_id
             )
             if 'forms' in status:
                 approve_forms[message_id] = status['forms']
