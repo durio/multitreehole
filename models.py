@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.contrib.auth.models import User
 from django.core.exceptions import ObjectDoesNotExist, MultipleObjectsReturned
 from django.db import models
@@ -55,6 +56,16 @@ class Service(models.Model):
     @classmethod
     def new_from_request(cls, request):
         return cls(slug=cls.split_request_host(request)[0])
+
+    @classmethod
+    def is_creation_allowed(cls, request):
+        slug = cls.split_request_host(request)[0]
+        if not cls.validate_slug(slug):
+            return False
+        pattern = getattr(settings, 'MULTITREEHOLE_SERVICE_SLUG_DISALLOWED', None)
+        if pattern is None:
+            return True
+        return not re.search(pattern, slug)
 
     @classmethod
     def build_host(cls, slug, request):

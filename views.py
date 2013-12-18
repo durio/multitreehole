@@ -4,7 +4,7 @@ from django.core.exceptions import ObjectDoesNotExist
 from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
 from django.core.urlresolvers import reverse
 from django.forms.util import ErrorList
-from django.http import Http404, HttpResponseRedirect
+from django.http import Http404, HttpResponseRedirect, HttpResponseForbidden
 from django.shortcuts import render_to_response
 from django.template import RequestContext
 from django.utils.decorators import method_decorator
@@ -82,9 +82,12 @@ def main(request):
 @service_refused
 def create(request):
     if Service.objects.filter(backend__isnull=True).exists():
-        return render_to_response('multitreehole/create.html', {
-            'backends': get_backend_tuples(),
-        }, context_instance=RequestContext(request))
+        if Service.is_creation_allowed(request):
+            return render_to_response('multitreehole/create.html', {
+                'backends': get_backend_tuples(),
+            }, context_instance=RequestContext(request))
+        else:
+            return HttpResponseForbidden()
     else:
         # Create meta site
         service = Service.new_from_request(request)
@@ -96,6 +99,8 @@ class CreateServiceView(View, TemplateResponseMixin):
     form_class = ServiceForm
 
     def dispatch(self, request, backend, *args, **kwargs):
+        if not Service.is_creation_allowed(request):
+            return HttpResponseForbidden()
         self.backend = get_backend_or_404(backend)
         self.backend_form_class = self.backend.form_class
         return service_refused(login_required(super(CreateServiceView, self).dispatch))(request)
